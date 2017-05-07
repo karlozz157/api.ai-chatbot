@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from abc import ABCMeta
 import os
 import random
 import sys
@@ -9,16 +10,15 @@ import unicodedata
 from bs4 import BeautifulSoup
 
 class Crawler(object):
-    HEADERS = 0
-    CONTENT = 1
+    __metaclass__ = ABCMeta
+
     HTML_PARSER = 'html.parser'
-    STATUS_OK = '200'
 
     def _make_request(self, url):
         url = self.__add_to(url, '\\', ['?', '&', '='])
         response = self.__shell_exec('curl -s -i %s' % url)
         response = self.__parse_response(response)
-        if self.STATUS_OK in response['headers'].split('\n')[0]:
+        if '200' in response['headers'].split('\n')[0]:
             return response['content']
         raise Exception(response['headers'])
 
@@ -43,8 +43,8 @@ class Crawler(object):
 
     def __parse_response(self, response):
         response = response.split('<html')
-        headers = response[self.HEADERS].strip().split('\r\n\r\n')
-        content = headers.pop().replace('>', '') + response[self.CONTENT]
+        headers = response[0].strip().split('\r\n\r\n')
+        content = headers.pop().replace('>', '') + response[1]
         return {'headers': headers.pop(), 'content': content}
 
     def __shell_exec(self, cmd):
@@ -100,6 +100,7 @@ class YoutubeCrawler(Crawler):
 
     def search(self, to_search):
         """ search something in youtube and return the first result """
+        to_search = self._replace_spaces_by_plus(to_search)
         response = self._make_request('%s/results?search_query=%s' % (self.URL, to_search))
         return self.__get_first_result_from_response(response, to_search)
 
@@ -123,7 +124,7 @@ class YoutubeCrawler(Crawler):
                 return '%s%s' % (self.URL, links[1].get('href'))
 
 
-class ScrappyCrawler(object):
+class SongCrawler(object):
     MAX_ATTEMPTS = 3
 
     @classmethod
@@ -132,12 +133,15 @@ class ScrappyCrawler(object):
         try_again = True
         while try_again:
             try:
-                top50SongsCrawler = Top50SongsCrawler()
-                song = top50SongsCrawler.search(artist)
-                youtubeCrawler = YoutubeCrawler()
-                return youtubeCrawler.search(song)
+                return cls.get_song(artist)
             except Exception as e:
-                print e
                 attempts += 1
                 if attempts == cls.MAX_ATTEMPTS:
                     try_again = False
+
+    @classmethod
+    def get_song(csl, artist):
+        top50SongsCrawler = Top50SongsCrawler()
+        song = top50SongsCrawler.search(artist)
+        youtubeCrawler = YoutubeCrawler()
+        return youtubeCrawler.search(song)
